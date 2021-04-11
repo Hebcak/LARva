@@ -1,6 +1,7 @@
 import pilot
 import img_process as img
 import frontier
+import numpy as np
 import Cone
 import Coordinates as xyz
 
@@ -148,34 +149,48 @@ class Navigator():
     def searchRedCone(self, level):
         # first try to rotate
         if level == 4: # base case
+            print("Search ended, there are no red cones.")
             return False
         turned = 0
+        print("Rotation of the robot started.")
         while True:
-            curAngle = self.pilot.getCurrentPos()[2]
-            dA = 1 #rotation step
+            dA = np.pi/4 #rotation step
             turned += dA
-            self.pilot.setBearing(curAngle + dA)
+            self.pilot.rotateRelatively(dA)
             self.scanForCones()
-            if(self.checkRedCone()): return True
-            if(turned >= 2*3.14 and len(self.cones) > 0): break #full turn
-            if (turned > 4*3.14): return False # unable to find a cone
+            if(self.checkRedCone()):
+                print("Robot can see a red cone.")
+                return True
+            if(turned >= 2*np.pi and len(self.cones) > 0):
+                print("Whole turn without a red cone.")
+                break #full turn
+            if (turned > 4*np.pi):
+                print("No cones found. Stop the program.")
+                return False # unable to find a cone
         # rotating did not help, try to drive to a cone but do not touch it
         # firstly choose a cone
+        print("Lets drive to a cone of another color.")
+        print("DEBUG: Cones before sort:", self.cones)
         self.cones.sort(reverse=True)
+        print("DEBUG: Cones after sort:", self.cones)
         goal_idx = 0
         for i in range(len(self.cones)):
             self.goal = (self.cones[goal_idx].x, self.cones[goal_idx].y)
             self.findPath(self.goal)
             if (len(self.path > self.acceptedPathLenght + 2)):
                 self.path = self.path[:self.acceptedPathLenght]
+                print("Long path to a cone found")
                 break
             elif (len(self.path > 3)):
                 self.path = self.path[:-2]
+                print("Short path to a cone found")
                 break
             else:
+                print("No path to a cone found")
                 goal_idx += 1
                 continue
         if(goal_idx == len(self.cones)): # still no path
+            print("Choosing a random position to search for cones")
             goal = [1, 0]
             valid = False
             while not valid:
@@ -188,8 +203,12 @@ class Navigator():
                 if (goal[0] > goal[1]):
                     goal[1] += 1
                 else: goal[0] += 1
+            print("Goal is:", self.goal)
             self.goal = (goal[0], goal[1])
             self.findPath(self.goal)
-            self.path = self.path[:5]
+            if (len(self.path) >= 5):
+                self.path = self.path[:5]
+        print("Driving somewhere")
         self.pilot.drive(self.path, False)
+        print("Starting searching on a deeper level")
         return self.searchRedCone(level+1)
