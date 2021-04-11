@@ -82,6 +82,19 @@ class Pilot():
         else:
             print("ERROR: Rotate2zero function can be called only on startup")
 
+    def rotateRelatively(self, angle):
+        curAngle = self.getCurrentPos()[2]
+        self.start = False
+        finalAngle = curAngle + angle
+        # maybe angle returned by get_odometry is in range [0, 2pi]? Ask Hynek
+        # if (finalAngle > 2*np.pi): finalAngle -= 2*np.pi
+        # elif (finalAngle < 0): finalAngle += 2*np.pi
+        v = np.sign(angle) * 0.1
+        while (v > 0 and curAngle < finalAngle) or (v < 0 and curAngle > finalAngle):
+            self.robot.cmd_velocity(angular=v)
+            self.rate.sleep()
+            curAngle = self.getCurrentPos()[2]
+
     def getCurrentPos(self):
         odometry = self.robot.get_odometry()
         if (self.start or odometry is None):

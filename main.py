@@ -9,10 +9,12 @@ Rate(1100).sleep()
 navigator.scanForCones()
 while True:
     if navigator.checkRedCone():
+        print("I see red cone. Lets topple it.")
         navigator.toppleRedCone()
         Rate(1100).sleep() # wait until cone falls
         navigator.scanForCones()
     else:
+        print("I dont see a red cone, lets find it.")
         if not navigator.searchRedCone(0):
             break # no red cone, end the program
 
