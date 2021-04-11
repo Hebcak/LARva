@@ -139,3 +139,57 @@ class Navigator():
         depth = self.pilot.robot.get_depth_image()
         self.cones = img.process(image, depth, self.kRGB)
         print("Found cones: ", self.cones)
+
+    def checkRedCone(self):
+        for cone in self.cones:
+            if cone.standing and cone.color == "Red":return True
+        return False
+
+    def searchRedCone(self, level):
+        # first try to rotate
+        if level == 4: # base case
+            return False
+        turned = 0
+        while True:
+            curAngle = self.pilot.getCurrentPos()[2]
+            dA = 1 #rotation step
+            turned += dA
+            self.pilot.setBearing(curAngle + dA)
+            self.scanForCones()
+            if(self.checkRedCone()): return True
+            if(turned >= 2*3.14 and len(self.cones) > 0): break #full turn
+            if (turned > 4*3.14): return False # unable to find a cone
+        # rotating did not help, try to drive to a cone but do not touch it
+        # firstly choose a cone
+        self.cones.sort(reverse=True)
+        goal_idx = 0
+        for i in range(len(self.cones)):
+            self.goal = (self.cones[goal_idx].x, self.cones[goal_idx].y)
+            self.findPath(self.goal)
+            if (len(self.path > self.acceptedPathLenght + 2)):
+                self.path = self.path[:self.acceptedPathLenght]
+                break
+            elif (len(self.path > 3)):
+                self.path = self.path[:-2]
+                break
+            else:
+                goal_idx += 1
+                continue
+        if(goal_idx == len(self.cones)): # still no path
+            goal = [1, 0]
+            valid = False
+            while not valid:
+                valid = True
+                for cone in self.cones:
+                    if (img.distance(goal, cone) < 2*self.keepConeDistance):
+                        valid = False
+                        break
+                if valid: break
+                if (goal[0] > goal[1]):
+                    goal[1] += 1
+                else: goal[0] += 1
+            self.goal = (goal[0], goal[1])
+            self.findPath(self.goal)
+            self.path = self.path[:5]
+        self.pilot.drive(self.path, False)
+        return self.searchRedCone(level+1)

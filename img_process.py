@@ -4,8 +4,8 @@ import math
 import Cone
 import Coordinates
 
-def distance(robot_pos, Cone): # function to get the distance from the cone
-    return math.sqrt(pow((Cone.x - robot_pos[0]), 2) + pow((Cone.y - robot_pos[1]), 2) + pow((Cone.z - robot_pos[2]), 2))
+def distance(pos, Cone): # function to get the distance from the cone
+    return math.sqrt(pow((Cone.x - pos[0]), 2) + pow((Cone.y - pos[1]), 2))
 
 def print_cones(cones, robot_pos): # for debugging purposes
     for i in range(len(cones)):

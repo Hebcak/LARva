@@ -7,7 +7,14 @@ navigator = navigator.Navigator(robot)
 Rate(1100).sleep()
 
 navigator.scanForCones()
-navigator.toppleRedCone()
+while True:
+    if navigator.checkRedCone():
+        navigator.toppleRedCone()
+        Rate(1100).sleep() # wait until cone falls
+        navigator.scanForCones()
+    else:
+        if not navigator.searchRedCone(0):
+            break # no red cone, end the program
 
 
 
