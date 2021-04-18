@@ -18,30 +18,35 @@ class Navigator():
         self.acceptedPathLenght = 5
         self.explored = []
         self.kRGB = self.pilot.getRGBKmatrix()
+        self.maxSearchIterations = 4
 
-        self.pilot.rotate2zero() #only for testing
         self.pilot.resetPosition()
         print("INFO: Navigator is now initialized")
 
     def toppleRedCone(self):
+        print("INFO: Cone will be toppled")
         reached = False
         lastPos = (0, 0)
+        check = True
         while (not reached):
             self.setGoal(lastPos)
             self.findPath(self.goal)
-            if (len(self.path) > self.acceptedPathLenght+2):
-                print("Driving only partial path")
+            if (len(self.path) > self.acceptedPathLenght+3):
+                print("INFO: Getting closer to the goal")
                 lastPos = self.path[self.acceptedPathLenght]
-                print(lastPos)
+                print("INFO: I will end up at: ", lastPos)
                 self.pilot.drive(self.path[:self.acceptedPathLenght], False)
-                self.scanForCones()
+                check = self.scanForCones(0)
             else:
-                print("Driving to the goal")
+                print("INFO: Cone is close enough, driving straight to it")
                 self.pilot.drive(self.path, True)
                 reached = True
-        self.toppledCones.append(self.goal)
+                self.toppledCones.append(self.goal)
+                print("INFO: Cone toppled")
+            if (not check):
+                print("ERROR: Lost target")
+                break
         self.goal = None
-        print("Cone toppled")
 
     def setGoal(self, lastPos):
         redCone = None
@@ -50,13 +55,12 @@ class Navigator():
                 redCone = (self.cones[x].coord.x, self.cones[x].coord.y)
                 break
         if (redCone is None):
-            redCone = self.goal # don't forget to add coordinate transform
-            redCone[0] -= lastPos[0]
-            redCone[1] -= lastPos[1]
-            print("Goal is invisible, using old goal: ", self.goal, "New coords: ", redCone)
+            redCone = self.newGoalFromOld(self.goal, lastPos)
+            print("INFO: Goal is invisible, using old goal: ", self.goal, "New coords: ", redCone)
         self.goal = redCone
 
     def findPath(self, goal):
+        print("INFO: Searching for optimal path")
         queue = frontier.queue(goal)  # initialize the frontier
         queue.push([[(0, 0), 0]], [None, 0, None, 0])  # push the first node into the frontier
         self.explored = []
@@ -67,7 +71,7 @@ class Navigator():
             if (current is None):  # what to do if the frontier is empty
                 self.path = None
                 break
-            elif (self.isCloseToCone(current[0], goal, False)):  # reached the end state
+            elif (self.isCloseToCone(current[0], goal, False, False)):  # reached the end state
                 self.extractPath(current)
                 break
 
@@ -75,6 +79,7 @@ class Navigator():
             self.explored.append(current[0])
             children = self.removeExpolored(children)
             queue.push(children, current)
+        print("INFO: Optimal path found!")
 
     def getNextStates(self, state):
         new = []
@@ -96,7 +101,7 @@ class Navigator():
         while (x < len(states)):
             rem = False
             for cone in self.cones:
-                if (self.isCloseToCone(states[x][0], (cone.coord.x, cone.coord.y), True)):
+                if (self.isCloseToCone(states[x][0], (cone.coord.x, cone.coord.y), True, False)):
                     states.remove(states[x])
                     remNum += 1
                     rem = True
@@ -104,12 +109,15 @@ class Navigator():
             if not rem:
                 x += 1
 
-    def isCloseToCone(self, state, cone, excludeGoal):
+    def isCloseToCone(self, state, cone, excludeGoal, scanning):
         dist = (((state[0]-cone[0])**2)+((state[1]-cone[1])**2))**0.5
+        keepDist = self.keepConeDistance
+        if (scanning):
+            keepDist = 0.5
         if (excludeGoal):
-            return dist <= self.keepConeDistance and not (cone[0] == self.goal[0] and cone[1] == self.goal[1])
+            return dist <= keepDist and not (cone[0] == self.goal[0] and cone[1] == self.goal[1])
         else:
-            return dist <= self.keepConeDistance
+            return dist <= keepDist
 
     # remove already explored nodes from addition to the frontier
     def removeExpolored(self, children):
@@ -135,80 +143,83 @@ class Navigator():
         path.append(self.goal)
         self.path = path
 
-    def scanForCones(self):
-        image = self.pilot.robot.get_rgb_image()
-        depth = self.pilot.robot.get_depth_image()
-        self.cones = img.process(image, depth, self.kRGB)
-        print("Found cones: ", self.cones)
+    def reacquireGoal(self, oldGoal, lastPos):
+        print("INFO: Reacquiring goal")
+        newGoal = self.newGoalFromOld(oldGoal, lastPos)
+        bearing = self.pilot.getBearing(newGoal)
+        self.pilot.setBearing(bearing)
+        self.getConesFromImage()
 
-    def checkRedCone(self):
-        for cone in self.cones:
-            if cone.standing and cone.color == "Red":return True
-        return False
+    def newGoalFromOld(self, oldGoal, lastPos):
+        redCone = (oldGoal[0] - lastPos[0], oldGoal[1] - lastPos[1])
+        return redCone
 
-    def searchRedCone(self, level):
-        # first try to rotate
-        if level == 4: # base case
-            print("Search ended, there are no red cones.")
+    def scanForCones(self, depth):
+        angle = np.pi / 4
+        maxRotations = 7
+        someCones = self.rotatingScan(angle, maxRotations)
+        if (someCones[0] == "Red"):
+            return True
+        elif (someCones[0] == "Some" and depth < self.maxSearchIterations):
+            print("INFO: No red Cones found. Changing vintage point.")
+            self.pilot.rotateByAngle((someCones[1]+1)*angle)
+            self.getConesFromImage()
+            self.goal = self.getNewVintagePoint()
+            self.findPath(self.goal)
+            self.pilot.drive(self.path, False)
+            #self.pilot.rotateByAngle(np.pi/2)
+            return self.scanForCones(depth+1)
+        else:
             return False
-        turned = 0
-        print("Rotation of the robot started.")
-        while True:
-            dA = np.pi/4 #rotation step
-            turned += dA
-            self.pilot.rotateRelatively(dA)
-            self.scanForCones()
-            if(self.checkRedCone()):
-                print("Robot can see a red cone.")
-                return True
-            if(turned >= 2*np.pi and len(self.cones) > 0):
-                print("Whole turn without a red cone.")
-                break #full turn
-            if (turned > 4*np.pi):
-                print("No cones found. Stop the program.")
-                return False # unable to find a cone
-        # rotating did not help, try to drive to a cone but do not touch it
-        # firstly choose a cone
-        print("Lets drive to a cone of another color.")
-        print("DEBUG: Cones before sort:", self.cones)
-        self.cones.sort(reverse=True)
-        print("DEBUG: Cones after sort:", self.cones)
-        goal_idx = 0
-        for i in range(len(self.cones)):
-            self.goal = (self.cones[goal_idx].x, self.cones[goal_idx].y)
-            self.findPath(self.goal)
-            if (len(self.path > self.acceptedPathLenght + 2)):
-                self.path = self.path[:self.acceptedPathLenght]
-                print("Long path to a cone found")
+
+    def rotatingScan(self, angle, maxRotations):
+        print("INFO: Scanning for cones")
+        iteration = 0
+        someCones = ("None", -1)
+        while (iteration < maxRotations):
+            self.cones = []
+            self.getConesFromImage()
+            if (self.cones != []):
+                if (someCones[0] == "None"):
+                    someCones = ("Some", iteration)
+                if (self.redConeFound()):
+                    print("INFO: Red cone found")
+                    someCones = ("Red", iteration)
+                    return someCones
+            print("INFO: No red cones found, rotating.")
+            print("")
+            self.pilot.rotateByAngle(angle)
+            iteration += 1
+        return someCones
+
+    def getNewVintagePoint(self):
+        check = False
+        newPoint = (1, 0)
+        while (not check):
+            check = True
+            for cone in self.cones:
+                if(self.isCloseToCone((1, 0), (cone.coord.x, cone.coord.y), False, True)):
+                    check = False
+                    break
+            if (not check):
+                newPoint = (newPoint[0], newPoint[1]+self.stateDistance)
+        return newPoint
+
+    def redConeFound(self):
+        found = False
+        for cone in self.cones:
+            if (cone.color == 'Red' and cone.standing):
+                found = True
                 break
-            elif (len(self.path > 3)):
-                self.path = self.path[:-2]
-                print("Short path to a cone found")
-                break
-            else:
-                print("No path to a cone found")
-                goal_idx += 1
-                continue
-        if(goal_idx == len(self.cones)): # still no path
-            print("Choosing a random position to search for cones")
-            goal = [1, 0]
-            valid = False
-            while not valid:
-                valid = True
-                for cone in self.cones:
-                    if (img.distance(goal, cone) < 2*self.keepConeDistance):
-                        valid = False
-                        break
-                if valid: break
-                if (goal[0] > goal[1]):
-                    goal[1] += 1
-                else: goal[0] += 1
-            print("Goal is:", self.goal)
-            self.goal = (goal[0], goal[1])
-            self.findPath(self.goal)
-            if (len(self.path) >= 5):
-                self.path = self.path[:5]
-        print("Driving somewhere")
-        self.pilot.drive(self.path, False)
-        print("Starting searching on a deeper level")
-        return self.searchRedCone(level+1)
+        return found
+
+    def getConesFromImage(self):
+        self.pilot.resetPosition()
+        image = np.zeros(0)
+        depth = np.zeros(0)
+        print("INFO: Scanning image for cones... ")
+        while (image is None or depth is None or image.size == 0 or depth.size == 0):
+            image = self.pilot.robot.get_rgb_image()
+            depth = self.pilot.robot.get_depth_image()
+        self.cones = img.process(image, depth, self.kRGB)
+        print("Scanning complete")

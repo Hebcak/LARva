@@ -10,7 +10,6 @@ class Pilot():
         print("INFO: Pilot has been initialized")
 
     def drive(self, path, topple):
-        print(path)
         self.resetPosition()
         for x in range(len(path)):
             angle = self.getBearing(path[x])
@@ -20,9 +19,9 @@ class Pilot():
 #drives to point in a straight line
     def driveTo(self, point, topple):
         if topple:
-            v = 1
+            v = 0.1
         else:
-            v = 0.2
+            v = 0.1
         prevDist = float('Inf')
         distance = self.getDistance(point)
         while (distance > 0.02 and distance < prevDist):
@@ -53,7 +52,15 @@ class Pilot():
         while (v > 0 and curAngle < angleInt) or (v < 0 and curAngle > angleInt):
             self.robot.cmd_velocity(angular=v)
             self.rate.sleep()
-            curAngle = self.getCurrentPos()[2]
+            curAngle = self.curAngleAsIndicator(v, curAngle)
+
+    def curAngleAsIndicator(self, v, oldAngle):
+        curAngle = self.getCurrentPos()[2]
+        if (v > 0 and (oldAngle > 0 and curAngle < 0)):
+            curAngle += 2*np.pi
+        elif (v < 0 and (oldAngle < 0 and curAngle > 0)):
+            curAngle -= 2*np.pi
+        return curAngle
 
     def getBearing(self, point):
         currentPos = self.getCurrentPos()
@@ -69,18 +76,14 @@ class Pilot():
             angle -=2*np.pi
         return angle
 
-    #Fix the skew of the robot for testing
-    def rotate2zero(self):
-        if self.start:
-            t = get_time()
-            v = -0.14
-            while ((get_time() - t) < 1):
-                self.robot.cmd_velocity(angular=v)
-                self.rate.sleep()
-            self.robot.reset_odometry()
-            print("INFO: The angle is now true 0")
-        else:
-            print("ERROR: Rotate2zero function can be called only on startup")
+    def rotateByAngle(self, angle):
+        self.resetPosition()
+        angle = angle % (2*np.pi)
+        if (angle > np.pi):
+            angle -= 2*np.pi
+        elif (angle < -1*np.pi):
+            angle += 2*np.pi
+        self.setBearing(angle)
 
     def rotateRelatively(self, angle):
         curAngle = self.getCurrentPos()[2]
