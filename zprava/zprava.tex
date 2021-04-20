@@ -34,18 +34,18 @@
 \begin{document}
 \maketitle
 \section{Úvod}
-Cílem projektu bylo naprogramovat robota Turtlebot tak, aby vyhledával a shazoval červené sloupky ve svém okolí aniž by se dotkl sloupku jiné barvy. Pracovali jsme v simulátoru Gazebo a robota programovali v Pythonu 2.
+Cílem projektu bylo naprogramovat robota Turtlebot tak, aby vyhledával a shazoval červené sloupky ve svém okolí aniž by se dotkl sloupku jiné barvy. Pracovali jsme v simulátoru Gazebo a robota programovali v Pythonu.
 \section{Návrh}
 V první fázi jsme navrhovali strukturu algoritmu. Program jsme rozdělili do několika částí:
 \begin{enumerate}
     \item Main loop\\
 V hlavní smyčce proběhne inicializace robota. Dále zde běží cyklus, který nejprve zadá příkaz k nalezení červeného sloupku a poté k jeho shození, případně ukončí běh celé aplikace, pokud se žádný červený sloupek nepodaří nalézt ani po důkladnějším průzkumu okolního světa.
     \item Navigator\\
-    Nejrozsáhlejší část kódu. Objekt, který obsahuje pole viditelných sloupků, zvolenou cestu, cíl této cesty. Dále metody pro prohledávání světa založené na algoritmu A* a shazování nalezených sloupků. Navigator řídí strukturu Pilot. 
+    Nejrozsáhlejší část kódu. Objekt, který obsahuje pole viditelných sloupků, zvolenou cestu a cíl této cesty. Dále metody pro prohledávání světa založené na algoritmu \textit{A}* a shazování nalezených sloupků. \textit{Navigator} řídí strukturu \textit{Pilot}. 
     \item Pilot\\
-    Pilot se stará o pohyb robota. Dostává rozkazy od bloku Navigator, jakou trajektorii má sledovat.
+    Pilot se stará o pohyb robota. Dostává rozkazy od bloku \textit{Navigator}, jakou trajektorii má sledovat.
     \item Image processing\\
-    Zpracování údajů z RGB a hloubkové kamery. Hlavní je funkce process, která najde všechny sloupky v daném obraze a přiřadí jim barvy a souřadnice relativní k robotovi.
+    Zpracování údajů z RGB a hloubkové kamery. Hlavní je funkce \textit{process}, která najde všechny sloupky v daném obraze a přiřadí jim barvy a souřadnice relativní k robotovi.
 \end{enumerate}
 \section{Vidění robota}
 Robot pozoruje svět kolem sebe pomocí RGB kamery a hloubkové kamery. Pomocí tzv. thresholdingu rozlišuje v RGB obraze, který převádí do HSV (Hue Saturation Value) červené, modré a zelené sloupky a také jejich stav - standing/fallen pomocí poměru šířky a výšky. Z hloubkového senzoru získá jejich vzdálenost (pokud se to z nějakého důvodu nepodaří, vypočte ji z perspektivního zkreslení) a počítá jejich souřadnice vztažené ke své pozici.
@@ -84,8 +84,8 @@ $$\mathbf{T} =
 \end{bmatrix}
 $$
 Přepočet souřadnic založen na \cite{prezentace}.
-\section{Použité konstanty}
-\subsection{Thresholding}
+\subsection{Použité konstanty}
+\subsubsection{Thresholding}
 Pro rozpoznávání sloupků metodou thresholdingu jsme použili meze uvedené v Tabulce \ref{tab:thresholding}.
 \begin{center}
 \captionof{table}{Tabulka hodnot pro thresholding} \label{tab:thresholding} 
@@ -102,7 +102,7 @@ Modrá & 107 & 135 & 30 & 255 & 25 & 255\\
 \hline
 \end{tabular}
 \end{center}
-\subsection{Matice \texorpdfstring{$\mathbf{K}_{RGB}$}{KRGB}}
+\subsubsection{Matice \texorpdfstring{$\mathbf{K}_{RGB}$}{KRGB}}
 Při programování jsme narazili na bug Turtlebot class, který způsobil, že při inicializaci Turtlebota se nepodařilo získat matici $\mathbf{K}_{RGB}$, kterou potřebujeme pro přepočítávání souřadnic. Protože se však tato matice nemění, vyřešili jsme problém přidáním defaultní matice  $\mathbf{K}_{RGB}$, která se použije místo matice poskytované Turtlebot class. Tato matice je rovna:
 $$
 \mathbf{K}_{RGB} = 
@@ -112,18 +112,34 @@ $$
 0 & 0 & 1
 \end{bmatrix}
 $$
-\section{Prohledávání prostoru}
-Pokud se v zorném poli Turtlebota nachází červený sloupek, pokusí se k němu najít cestu pomocí algoritmu A*. Sloupky jiných barev přitom bere jako překážky a nesmí se k nim přiblížit na menší vzdálenost, než má dovoleno. Ve vyjímečných případech nastane ztráta vizuálního kontaktu s cílovým sloupkem z důvodu objíždění některé překážky. Potom se v algoritmu vychází ze zapamatované poslední pozice cílového sloupku upravenou o změnu pozice robota.
+\section{Navigace}
+K plánování trasy se používá algoritmus \textit{A*}. Aby bylo plánování jednodušší, program si rozdělí plochu na jednotlivé body vzdálené od sebe 20 cm a z každého tohoto bodu může dojet pouze do 7 jeho sousedních bodů (8 sousedů - 1 ze kterého přijel). Z této množiny 7 bodů je potřeba ještě odstranit body, které jsou příliž blízko ke sloupkům, které Turtlebot nemá srazit - náš robot nepojede do stavu, který je blíže než 30 cm k jakémukoliv jinému než cílovému sloupku. Celá cesta je pak složena z úseček mezi těmito body. Cena cesty je již ujetá vzdálenost a předpokládaná cena (heuristická funkce) daného bodu je euklidovská vzdálenost od cíle.
+
+Abychom omezili vliv nepřesnosti odometrie a detekce pozice sloupků, pokud nám \textit{A*} vrátí cestu delší než 8 kroků, ujede jich robot pouze 5 (aby si pro jistotu udržel dostatečný odstup pro identifikaci cílového sloupku z RGB obrázku), pak znovu začne hledat cílový sloupek a až ho najde, pokusí se k němu dojet. (Toto se opakuje, dokud sloupek není sražen.)
+
+Veškerá plánovací logika robota pracuje v relativních souřadnicích - tj. z pohledu plánovájí je robot vždy v pozici $(0, 0, 0)$. (Vektor pozice je $(x, y, \theta)$, kde $\theta$ je úhel natočení.) Proto je důležité, aby před během \textit{A*} došlo k načtení sloupků z aktuálního zorného pole a vynulování odometrie. Poté se robot smí hýbat pouze podle nalezené trasy, jinak se trasa stane neplatnou, protože se změní realtivní souřadnice.
+
+Samotné cestování podel trasy funguje následovně: Turtlebot dostane trasu jako seznam bodů \textit{(x, y)}. Sám je na začátku v bodě \textit{(0, 0)} s úhlem natočení 0. Robot se nejprve natočí směrem k bodu, do kterého má jet a poté k němu jede tak dlouho, dokud se jeho vzdálenost k tomuto cílovému bodu zmenšuje. Tento postup opakuje, dokud je od cílového bodu dál než 1 cm. Jakmile je tato podmínka splněna, přesune se robot na další bod v seznamu.
+
+Když takto robot jezdí, používá souřadnice, které platily v místě, kde byl proveden \textit{A*}, a po ujetí cesty je odometrie vynulována. Je to ekvivalentní postupu: Podívám se a zapamatuji si, kudy mám jít, abych do ničeho nenarazil. Zavřu oči, ujdu trasu a pak je znovu otevřu, abych se podíval, kam jsem se dostal a jak mám postupovat dál.
+
 \section{Hledání cíle}
-Pokud se v zorném poli RGB kamery žádný červený sloupek nenachází, pokusí se robot nějaký nalézt. Nejprve začne rotovat na místě. Pokud při tom žádný cíl nenalezne, ujede část cesty ke sloupku jiné barvy, ale drží si od něj odstup, aby ho neshodil. Tam se znovu začne otáčet a hledání spustí znovu. Po určitém počtu kroků usoudí, že žádný stojící červený sloupek se ve světě nenachází a ukončí program.
+Funkce \textit{getConesFromImage()} třídy \textit{Navigator} najde sloupky v aktuálním zorném poli robota a uloží je jako seznam. (viz sekci Vidění Robota).
+V případě, že Turtlebot dostane pokyn, že má hledat červený sloupek, zavolá tuto funkci. Pokud se v zorném poli červený sloupek nenachází, otočí se v protisměru hodinových ručiček o $\frac{\pi}{4}$ rad a zkusí tuto funkci zavolat znovu. Otáčení a hledání sloupků opakuje, dokud na červený sloupek nenarazí. V ten okamžik k němu najde cestu a dojede ho srazit. (Viz sekci Navigace.)
+
+Pokud ale žádný červený sloupek nenašel, otočí se robot ve směru, ve kterém poprvé viděl alespoň některé sloupky, a zavolá funkci \textit{getConesFromImage()}, aby měl aktuální informace o pozicích sloupků. Poté zkontroluje, že bod \textit{(1, 0)} je dál než 50 cm od některého ze sloupků. Pokud ne, přičte k y souřadnici 20 cm a zkusí znovu zkontrolovat vzdálenost od sloupků. Toto opakuje, dokud není vzdálenost nového bodu od všech sloupků dostatečná. Turtlebot si najde cestu do tohoto nového pozorovacího bodu a dojede do něj stejným způsobem, jako kdyby jel srazit červený sloupek. Když tam dojede, znovu se začne otáčet a hledat sloupky. Tento postup se opakuje do nalezení červeného sloupku, ale maximálně 4x. Po 4. opakování Turtlebot usoudí, že všechny červené sloupky už byly sraženy a vypne se.
+
+Pokud ale po prvním otáčení neobjevil vůbec žádné sloupky, usoudí robot, že je jeho práce hotova a vypne se.
+
 \section{Podpůrné aplikace}
-K hlavnímu programu jsme také napsali aplikaci Threshold Picker a Threshold Picker 2.0, pomocí kterých můžeme nastavovat různé thresholdy pro jednotlivé barvy a pozorovat, jak to ovlivní robotovo rozpoznávání sloupků. Pohled do aplikace Threshold Picker 2.0 viz Obrázek \ref{thr_picker}.
-\begin{figure}[h]
-\includegraphics[width=\textwidth]{Threshold_Picker.png}
-\caption{Pohled v aplikaci Threshold Picker 2.0}
-\label{thr_picker}
+K hlavnímu programu jsme také napsali aplikaci \textit{Threshold Picker} a \textit{Threshold Picker 2.0}, pomocí kterých můžeme nastavovat různé thresholdy pro jednotlivé barvy a pozorovat, jak to ovlivní robotovo rozpoznávání sloupků. Pohled do aplikace \textit{Threshold Picker 2.0} viz Obrázek \ref{thr_picker}.
+\begin{figure}[H]
+	\centering
+	\includegraphics[scale=0.3]{Threshold_Picker.png}
+	\caption{Pohled v aplikaci Threshold Picker 2.0}
+	\label{thr_picker}
 \end{figure}
-Dalším podpůrným skriptem je skript quaternion\_to\_rot\_matrix, který byl použit pouze jednou pro převedení quaternionu na rotační matici. Tento kód jsme převzali z \cite{quaterniony}.
+Dalším podpůrným skriptem je skript \textit{quaternion\_to\_rot\_matrix}, který byl použit pouze jednou pro převedení quaternionu na rotační matici. Tento kód jsme převzali z \cite{quaterniony}.
 
 \begin{thebibliography}{}
 
