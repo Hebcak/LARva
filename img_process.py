@@ -5,7 +5,7 @@ import Cone
 import Coordinates
 
 def distance(pos, Cone): # function to get the distance from the cone
-    return math.sqrt(pow((Cone.x - pos[0]), 2) + pow((Cone.y - pos[1]), 2))
+    return math.sqrt(pow((Cone.coord.x - pos[0]), 2) + pow((Cone.coord.y - pos[1]), 2))
 
 def print_cones(cones, robot_pos): # for debugging purposes
     for i in range(len(cones)):
@@ -66,7 +66,7 @@ def process(img, depth_img, K_RGB):
                 continue
             mid = (int(x + w / 2), int(y + h / 2))
             z = depth_img[mid[1], mid[0]]
-            if z is None:
+            if (z is None or np.isnan(z)):
                 z = distance_from_rgb(x, y, w, h, standing)
             else:
                 z += 0.025 # convert to distance from the middle of the bannsiter
