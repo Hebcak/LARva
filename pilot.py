@@ -30,7 +30,7 @@ class Pilot():
             self.rate.sleep()
             distance = self.getDistance(point)
         if not (distance < 0.05):
-            print("INFO: Adjustment needed to reach: ", point)
+            print("INFO: Adjustment needed to complete this part of the trajectory.")
             angle = self.getBearing(point)
             self.setBearing(angle)
             self.driveTo(point, False)

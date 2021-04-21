@@ -1,43 +1,39 @@
 import pilot
-import img_process as img
+import imgProcess as img
 import frontier
 import numpy as np
-import Cone
-import Coordinates as xyz
 
 #Class responsible for navigation
 class Navigator():
-    def __init__(self, robot):
+    def __init__(self, robot, targetColor):
         self.pilot = pilot.Pilot(robot)
         self.cones = []
+        self.target = targetColor
         self.path = []
         self.toppledCones=[]
         self.goal = None
         self.stateDistance = 0.2
-        self.keepConeDistance = 0.3
+        self.keepConeDistance = 0.4
         self.acceptedPathLenght = 5
         self.explored = []
         self.kRGB = self.pilot.getRGBKmatrix()
-        self.maxSearchIterations = 4
+        self.maxSearchIterations = 3
 
         self.pilot.resetPosition()
         print("INFO: Navigator is now initialized")
 
-    def toppleRedCone(self):
+    def toppleTargetCone(self):
         print("INFO: Cone will be toppled")
         reached = False
-        lastPos = (0, 0)
         check = True
         while (not reached):
-            self.setGoal(lastPos)
+            self.setGoal()
             self.findPath(self.goal)
             if (not self.path):
                 print("ERROR: No path found")
                 break
             if (len(self.path) > self.acceptedPathLenght+3):
                 print("INFO: Getting closer to the goal")
-                lastPos = self.path[self.acceptedPathLenght]
-                print("INFO: I will end up at: ", lastPos)
                 self.pilot.drive(self.path[:self.acceptedPathLenght], False) # odometry reset
                 self.updateToppledCones(self.pilot.getCurrentPos())
                 check = self.scanForCones(0)
@@ -49,20 +45,17 @@ class Navigator():
                 self.toppledCones.append(self.goal)
                 print("INFO: Cone toppled")
             if (not check):
-                print("ERROR: Lost target")
+                print("INFO: Lost target")
                 break
         self.goal = None
 
-    def setGoal(self, lastPos):
-        redCone = None
+    def setGoal(self):
+        targetCone = None
         for x in range(len(self.cones)):
-            if (self.cones[x].color == 'Red' and self.cones[x].standing):
-                redCone = (self.cones[x].coord.x, self.cones[x].coord.y)
+            if (self.cones[x].color == self.target and self.cones[x].standing):
+                targetCone = (self.cones[x].coord.x, self.cones[x].coord.y)
                 break
-        if (redCone is None):
-            redCone = self.newGoalFromOld(self.goal, lastPos)
-            print("INFO: Goal is invisible, using old goal: ", self.goal, "New coords: ", redCone)
-        self.goal = redCone
+        self.goal = targetCone
 
     def findPath(self, goal):
         print("INFO: Searching for optimal path")
@@ -90,7 +83,7 @@ class Navigator():
             print("INFO: Optimal path found!")
         else:
             self.path = None
-            print()
+            print("INFO: Path not found, scanning for a new target.")
 
     def getNextStates(self, state):
         new = []
@@ -154,38 +147,38 @@ class Navigator():
         path.append(goal)
         self.path = path
 
-    def reacquireGoal(self, oldGoal, lastPos):
-        print("INFO: Reacquiring goal")
-        newGoal = self.newGoalFromOld(oldGoal, lastPos)
-        bearing = self.pilot.getBearing(newGoal)
-        self.pilot.setBearing(bearing)
-        self.getConesFromImage()
-
-    def newGoalFromOld(self, oldGoal, lastPos):
-        redCone = (oldGoal[0] - lastPos[0], oldGoal[1] - lastPos[1])
-        return redCone
-
     def scanForCones(self, depth):
-        angle = np.pi / 4
-        maxRotations = 7
+        angle = np.pi / 8
+        maxRotations = 15
         someCones = self.rotatingScan(angle, maxRotations)
 
         maxSearch = self.maxSearchIterations
         if (self.toppledCones == []):
-            maxSearch = 6
+            maxSearch = 5
 
-        if (someCones[0] == "Red"):
+        if (someCones[0] == self.target):
             return True
         elif (someCones[0] == "Some" and depth < maxSearch):
-            print("INFO: No red Cones found. Changing vintage point.")
+            print("INFO: No target Cones found. Changing vintage point.")
             self.pilot.rotateByAngle((someCones[1]+1)*angle) # odometry reset
             self.updateToppledCones(self.pilot.getCurrentPos())
             self.getConesFromImage()
-            self.goal = self.getNewVintagePoint()
-            self.findPath(self.goal)
-            self.pilot.drive(self.path, False) # odometry reset
-            self.updateToppledCones(self.pilot.getCurrentPos())
-            return self.scanForCones(depth+1)
+            check = self.validateVintagePoint()
+            numrot = 0
+            while ((not check) and numrot < maxRotations):
+                self.pilot.rotateByAngle(angle)  # odometry reset
+                self.updateToppledCones(self.pilot.getCurrentPos())
+                self.getConesFromImage()
+                check = self.validateVintagePoint()
+            if (check):
+                self.goal = (1, 0)
+                self.findPath(self.goal)
+                self.pilot.drive(self.path, False) # odometry reset
+                self.updateToppledCones(self.pilot.getCurrentPos())
+                return self.scanForCones(depth+1)
+            else:
+                print("INFO: Unable to get to a different vintage point")
+                return False
         else:
             return False
 
@@ -199,37 +192,31 @@ class Navigator():
             if (self.cones != []):
                 if (someCones[0] == "None"):
                     someCones = ("Some", iteration)
-                if (self.redConeFound()):
-                    print("INFO: Red cone found")
-                    print("Cones: ", self.cones)
-                    someCones = ("Red", iteration)
+                if (self.targetConeFound()):
+                    print("INFO: Target cone found")
+                    someCones = (self.target, iteration)
                     return someCones
-            print("INFO: No red cones found, rotating.")
+            print("INFO: No target cones found, rotating.")
             print("")
             self.pilot.rotateByAngle(angle) # odometry reset
             self.updateToppledCones(self.pilot.getCurrentPos())
             iteration += 1
         return someCones
 
-    def getNewVintagePoint(self):
-        check = False
+    def validateVintagePoint(self):
+        check = True
         newPoint = (1, 0)
-        while (not check):
-            check = True
-            for cone in self.cones:
-                if (not np.isnan(cone.coord.x) and not np.isnan(cone.coord.y) and not np.isnan(cone.coord.z)):
-                    if(self.isCloseToCone(newPoint, (cone.coord.x, cone.coord.y), False, True)):
-                        check = False
-                        break
-            if (not check):
-                newPoint = (newPoint[0], newPoint[1]+self.stateDistance)
-                print("INFO: This vintage point is obscted, choosing a different one: ", newPoint)
-        return newPoint
+        for cone in self.cones:
+            if (not np.isnan(cone.coord.x) and not np.isnan(cone.coord.y) and not np.isnan(cone.coord.z)):
+                if(self.isCloseToCone(newPoint, (cone.coord.x, cone.coord.y), False, True)):
+                    check = False
+                    break
+        return check
 
-    def redConeFound(self):
+    def targetConeFound(self):
         found = False
         for cone in self.cones:
-            if (cone.color == 'Red' and cone.standing):
+            if (cone.color == self.target and cone.standing):
                 found = True
                 break
         return found
@@ -251,12 +238,11 @@ class Navigator():
                 deleted += 1
             i += 1
         for cone in self.cones:
-            if cone.color == "Red" and cone.standing:
+            if cone.color == self.target and cone.standing:
                 for toppled in self.toppledCones:
-                    print("Topled: ", toppled)
                     if (img.distance(toppled, cone) <= 1):
-                        print("INFO: I see a red cone that i already toppled.")
-                        #cone.standing = False
+                        print("INFO: I see a target cone that i already toppled.")
+                        #cone.standing = False #Removing toppled cones not working - commented out to prevent unexpected behavior
                         break
 
         print("Scanning complete")
