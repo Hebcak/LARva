@@ -64,26 +64,15 @@ def process(img, depth_img, K_RGB):
                 standing = False
             else: #invalid ratio
                 continue
+
             mid = (int(x + w / 2), int(y + h / 2))
             z = depth_img[mid[1], mid[0]]
             if (z is None or np.isnan(z)):
                 z = distance_from_rgb(x, y, w, h, standing)
             else:
-                z += 0.025 # convert to distance from the middle of the bannsiter
+                z += 0.025 # convert to distance from the middle of the cone
             pos = camera_coord(mid[0], mid[1], z) # position in camera coordinates
             pos = convert_to_robot_coord(pos)
             new = Cone.Cone(color, pos, standing)
             cones.append(new)
     return cones
-
-if __name__ == "__main__": # For testing purposes
-    img = cv2.imread("Data/foto1.png")
-    depth = np.full((480, 640), None)
-    K_RGB = np.array([[554.25469119, 0, 320.5],
-                      [0, 554.25469119, 240.5],
-                      [0, 0, 1]])
-
-    cones = process(img, depth, K_RGB)
-    print(cones)
-    cv2.imshow("Image", img)
-    cv2.waitKey(0)

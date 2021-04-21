@@ -68,7 +68,7 @@ while True:
             approx = cv2.approxPolyDP(cnt, 0.02 * cv2.arcLength(cnt, True), True)
             if len(approx) != 4:  # not a square
                 cv2.drawContours(imgContour, cnt, -1, color_dict["Cyan"], 2)
-                imgContour = cv2.putText(imgContour, "Not a sloupek", (x, y - 3), cv2.FONT_HERSHEY_COMPLEX, 0.4, (0, 0, 0), 1)
+                imgContour = cv2.putText(imgContour, "Not a cone", (x, y - 3), cv2.FONT_HERSHEY_COMPLEX, 0.4, (0, 0, 0), 1)
                 continue
             if float(h) / w > 8:  # standing Bannister
                 imgContour = cv2.drawContours(imgContour, cnt, -1, color_dict[color], 2)

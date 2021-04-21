@@ -6,9 +6,6 @@ class Coordinates:
         self.y = y
         self.z = z
     def __repr__(self):  # for printing
-        # Python 3
-        # return "[{:.3}, {:.3}, {:.3}]".format(self.x, self.y, self.z)
-        # Python 2
         return "[%.3f, %.3f, %.3f]" % (self.x, self.y, self.z)
     def numpyfy(self):
         return np.array([self.x, self.y, self.z])
